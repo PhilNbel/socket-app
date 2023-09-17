@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible"
+        content="IE=edge">
+        <meta name="viewport" content="width=device-width,
+        initial-scale=1.0">
+        <title>Socket Chat App</title>
+        <style>
+            body {background-color: powderblue;}
+            li:nth-child(even){
+                background-color: aquamarine;
+            }
+            .inputForm{
+                padding:1rem;
+                margin: 1rem;
+                border-radius: 5px;
+                border: solid black 2px;
+            }
+            #messages{
+                min-height:50vh;
+                min-width: 80vw;
+                padding: 3rem;
+                border-radius: 8px;
+                border: solid blue 2px;
+            }
+            #peopleList{
+                padding: 3rem;
+                border-radius: 8px;
+                border: solid green 2px;
+            }
+            #typingLine{
+                color: gray;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>Welcome to Socket Chat</h2>
+        <div id="peopleList">
+            <ul id="people"></ul>
+        </div>
+        
+        <ul id="messages"></ul>
+        <p id="typingLine" class="discrete"></p>
+        <form id="form" class="inputForm">
+            <h2>As <namefield id="currName"></namefield>:</h2>
+            <input type="text" id="input" onchange="checkTyping()"/>
+            <input type="submit" value="Submit"/>
+        </form>
+        <form id="form2" class="inputForm">
+            <h4> Change name :</h1>
+            <input type="text" id="input2"/>
+            <input type="submit" value="Change"/>
+        </form>
+        <script src="/socket.io/socket.io.js"></script>
+        <script src="/socket.io/socket.io.js"></script>
+        <script>
+            //Initialization
+            let socket = io();
+            let onlineUsers = [];
+            let typingUsers = [];
+            //DOM Elements recuperation
+            const form = document.getElementById('form');
+            const input = document.getElementById('input');
+
+            const form2 = document.getElementById('form2');
+            const input2 = document.getElementById('input2');
+
+            const messages = document.getElementById('messages');
+            let chatUsers = document.getElementById('people');
+            const typingLine = document.getElementById('typingLine')
+
+            //Method declarations
+
+            const updateOnline = ()=>{
+
+                const members = document.createElement('ul');
+                const title = document.createElement('li');                
+                title.innerHTML = "<h3>Connected:</h3>";
+                members.append(title);
+                onlineUsers.map((user)=>{
+                    const item = document.createElement('li');                
+                    item.textContent = user;
+                    members.appendChild(item);
+                });
+                chatUsers.parentNode.replaceChild(members, chatUsers);
+                chatUsers = members;
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+
+            const updateTyping = ()=>{
+
+                let usersNumber = typingUsers.length;
+
+                if(usersNumber < 1){
+                    typingLine.style.display = "none";
+                    return;
+                }
+
+                typingLine.style.display = "block";
+                let newText = "";
+
+                if(usersNumber == 1){
+                    newText = `${typingUsers[0]} is typing..`;
+                } else {
+                    for(let i=0; i<usersNumber-1; i++){
+                        newText += typingUsers[i] + ', '
+                    }
+                    newText+= `and +${typingUsers[usersNumber]} are typing...`;
+                }
+                typingLine.innerText = newText;                
+            }
+
+            const checkTyping = ()=>{
+                if(input.value)
+                    socket.emit('is typing');
+                else
+                    socket.emit('stopped typing');
+
+            }
+
+            const addMessage = (msg)=>{
+                const item = document.createElement('li');
+                item.textContent = msg;
+                messages.appendChild(item);
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+
+            //Listeners
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (input.value) {
+                    socket.emit('message', input.value);
+                    let header = onlineUsers.filter(x=>x.includes("(You)"))[0];
+                    header = header.substring(0, header.length-5) + " : ";
+                    addMessage(header+input.value);
+                    socket.emit('stopped typing');
+                    input.value = '';
+                }
+            });
+
+            form2.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (input2.value) {
+                    console.log("trying to change name")
+                    socket.emit('name change', input2.value);
+                    input2.value = '';
+                }
+            });
+
+            //Signal behaviors
+            socket.on('new name', (oldName, newName) => {
+                document.getElementById("currName").innerText = newName;
+                if(oldName)
+                    onlineUsers[onlineUsers.indexOf(oldName+" (You)")] = newName+" (You)";
+                updateOnline();
+            });
+
+            socket.on('new name change', (oldName, newName)=>{
+                onlineUsers[onlineUsers.indexOf(oldName)] = newName;
+                updateOnline();
+                addMessage(oldName+" renamed themselves into "+newName);
+            });
+            
+            socket.on('new message', (msg) => {
+                addMessage(msg);
+            });
+            
+            socket.on('new typer', (msg)=>{
+                typingUsers.push(msg);
+                updateTyping();
+            });
+
+            socket.on('typing stopped', (msg)=>{
+                typingUsers = typingUsers.filter((x)=>x!=msg);
+                updateTyping();
+            });
+
+            
+            socket.on('new connection', (msg)=>{
+                addMessage(msg+" has entered the chat");
+                onlineUsers.push(msg)
+                updateOnline();
+            });
+
+            socket.on('connected list', (msg)=>{
+                onlineUsers = msg.split("\n");
+                onlineUsers.pop();
+                updateOnline();
+            });
+
+            socket.on('disconnection', (msg) => {
+                onlineUsers = onlineUsers.filter((x)=>x!=msg);
+                updateOnline();
+                addMessage(msg+" left the chat")
+            });
+            //We ask the list of users
+            socket.emit("get connected");
+        </script>
+    </body>
+</html>
